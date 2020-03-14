@@ -1,0 +1,83 @@
+#!/usr/bin/env python
+
+import argparse
+import notion
+import json
+import configparser, os
+from os.path import expanduser
+from notion.client import NotionClient
+
+#  arg path
+parser = argparse.ArgumentParser(prog='notion_cli', description='notion cli, make notion easy to use')
+parser.add_argument('--verbose', action='store_true')
+parser.add_argument('--config', default='~/.notion/config.cfg', help='config file, ~/.notion/config.cfg by default')
+parser.add_argument('--resource', '-res', default='collection', choices=['collection'], help='target resource, collection by default')
+parser.add_argument('--resource-id', '-id', required=True, help='resource id, for example collection id if select collection as result')
+parser.add_argument('--data', help='data, for item: k1:v1,k2:v2')
+
+sub_parser = parser.add_subparsers(dest='operator')
+ops_parser = sub_parser.add_parser('add', help='operations add item')
+ops_parser = sub_parser.add_parser('ls', help='operations add item')
+
+args = parser.parse_args()
+if args.verbose:
+    print(args)
+
+data = {}
+if args.data:
+    # data = dict(map(lambda s : s.split(':'), args.data.split(',')))
+    data = json.loads(args.data)
+    if args.verbose:
+        print('converted data: ')
+        print(data)
+
+config_path = os.path.expanduser(args.config)
+
+if not os.path.exists(config_path):
+    print('missing ' + args.config)
+    exit(-1)
+
+#  Read config
+parser = configparser.ConfigParser()
+parser.read(config_path)
+
+token = parser['default'].get('token')
+account = parser['default'].get('account')
+
+if not token or not account:
+    print('missing token or account')
+    exit(-1)
+
+# Debug
+if args.verbose:
+    print('token: ' + token)
+    print('account: ' + account)
+
+# # Obtain the `token_v2` value by inspecting your browser cookies on a logged-in session on Notion.so
+client = NotionClient(token_v2 = token)
+
+if args.resource == 'collection':
+    # collection mode
+    items = items = client.get_collection_view("https://www.notion.so/{}/{}".format(account, args.resource_id))
+    if not args.resource_id:
+        print('missing resource_id')
+    if args.operator == 'ls':
+        for row in items.collection.get_rows():
+            print(row.Name)
+    elif args.operator == 'add':
+        row = items.collection.add_row()
+        properties = row.get_all_properties()
+        if data:
+            for k, v in data.items():
+                if k in properties:
+                    row.set_property(k, v)
+                else:
+                    print('失败: property:{} not exist, please check'.format(k))
+                    exit(-1)
+        items.default_query().execute()
+    else:
+        print('失败: not implement')
+else:
+    print('失败: not implement')
+
+print('添加成功')
